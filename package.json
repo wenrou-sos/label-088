@@ -1,0 +1,13 @@
+{
+  "name": "travel-agency-platform",
+  "version": "1.0.0",
+  "description": "旅行社组团与计调操作平台",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build"
+  },
+  "author": "",
+  "license": "MIT"
+}
