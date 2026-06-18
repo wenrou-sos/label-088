@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS product_prices (
 
 CREATE TABLE IF NOT EXISTS tour_groups (
   id SERIAL PRIMARY KEY,
-  product_id INTEGER NOT NULL REFERENCES tour_products(id),
+  product_id INTEGER NOT NULL REFERENCES tour_products(id) ON DELETE CASCADE,
   group_code VARCHAR(50) NOT NULL UNIQUE,
   departure_date DATE NOT NULL,
   return_date DATE NOT NULL,

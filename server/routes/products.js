@@ -4,17 +4,26 @@ const pool = require('../db/pool');
 
 router.get('/', async (req, res, next) => {
   try {
-    const result = await pool.query(`
-      SELECT p.*,
-        json_agg(DISTINCT i ORDER BY i.day_number) as itineraries,
-        json_agg(DISTINCT pr) as prices
-      FROM tour_products p
-      LEFT JOIN daily_itineraries i ON p.id = i.product_id
-      LEFT JOIN product_prices pr ON p.id = pr.product_id
-      GROUP BY p.id
-      ORDER BY p.created_at DESC
-    `);
-    res.json(result.rows);
+    const result = await pool.query(
+      'SELECT * FROM tour_products ORDER BY created_at DESC'
+    );
+    const products = result.rows;
+    const productsWithData = await Promise.all(products.map(async (p) => {
+      const itRes = await pool.query(
+        'SELECT * FROM daily_itineraries WHERE product_id = $1 ORDER BY day_number',
+        [p.id]
+      );
+      const prRes = await pool.query(
+        'SELECT * FROM product_prices WHERE product_id = $1',
+        [p.id]
+      );
+      return {
+        ...p,
+        itineraries: itRes.rows,
+        prices: prRes.rows
+      };
+    }));
+    res.json(productsWithData);
   } catch (err) {
     next(err);
   }
@@ -140,7 +149,19 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM tour_products WHERE id = $1', [id]);
+    const groupCheck = await pool.query(
+      'SELECT id, group_code FROM tour_groups WHERE product_id = $1',
+      [id]
+    );
+    if (groupCheck.rows.length > 0) {
+      return res.status(400).json({
+        error: `该产品下有 ${groupCheck.rows.length} 个出团计划（${groupCheck.rows.map(g => g.group_code).join('、')}），请先删除相关出团计划`
+      });
+    }
+    const result = await pool.query('DELETE FROM tour_products WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '产品不存在' });
+    }
     res.json({ message: '产品删除成功' });
   } catch (err) {
     next(err);

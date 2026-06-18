@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "init-db": "node db/init.js"
+    "init-db": "node db/init.js",
+    "reset-db": "node db/init.js --reset"
   },
   "dependencies": {
     "cors": "^2.8.5",
