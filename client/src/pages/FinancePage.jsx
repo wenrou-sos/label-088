@@ -50,8 +50,11 @@ function FinancePage() {
     try {
       const data = await api.get('/tourists/groups');
       setGroups(data);
-      if (!selectedGroupId && data.length > 0) {
-        setSelectedGroupId(data[0].id.toString());
+      if (groupId !== undefined && data.length > 0) {
+        const exists = data.some(g => g.id.toString() === groupId);
+        if (!exists) {
+          setSelectedGroupId(data[0].id.toString());
+        }
       }
       const summaries = [];
       for (const g of data) {
@@ -79,10 +82,25 @@ function FinancePage() {
   const totalMargin = totalIncome > 0 ? (totalProfit / totalIncome * 100).toFixed(2) : 0;
 
   useEffect(() => {
-    if (allSummaries.length > 0 && !selectedGroupId && trendChartRef.current) {
-      renderTrendChart();
+    if (!selectedGroupId && trendChartRef.current) {
+      if (allSummaries.length > 0) {
+        renderTrendChart();
+      } else if (trendInstance.current) {
+        trendInstance.current.dispose();
+        trendInstance.current = null;
+      }
     }
   }, [allSummaries, selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedGroupId && allSummaries.length > 0 && trendChartRef.current) {
+      const t = requestAnimationFrame(() => {
+        renderTrendChart();
+        trendInstance.current?.resize();
+      });
+      return () => cancelAnimationFrame(t);
+    }
+  }, []);
 
   useEffect(() => {
     if (summary && barChartRef.current) {
@@ -233,9 +251,7 @@ function FinancePage() {
     });
     const margins = sorted.map(s => parseFloat(s.profit_margin));
     const codes = sorted.map(s => s.group.group_code);
-    const avgMargin = margins.length > 0
-      ? (margins.reduce((a,b)=>a+b,0) / margins.length).toFixed(2)
-      : 0;
+    const benchmarkMargin = parseFloat(totalMargin);
 
     const option = {
       tooltip: {
@@ -255,7 +271,7 @@ function FinancePage() {
         }
       },
       grid: { left: 60, right: 40, top: 60, bottom: 80 },
-      legend: { data: ['毛利率', '平均毛利率'], top: 0 },
+      legend: { data: ['毛利率', '整体加权平均毛利率'], top: 0 },
       xAxis: {
         type: 'category',
         boundaryGap: false,
@@ -281,7 +297,7 @@ function FinancePage() {
           symbolSize: 10,
           lineStyle: { width: 3, color: '#0ea5e9' },
           itemStyle: {
-            color: (p) => p.value >= parseFloat(avgMargin) ? '#10b981' : '#f97316'
+            color: (p) => p.value >= benchmarkMargin ? '#10b981' : '#f97316'
           },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -300,7 +316,7 @@ function FinancePage() {
             symbol: 'none',
             lineStyle: { type: 'dashed', color: '#64748b', width: 2 },
             label: {
-              formatter: `平均: {c}%`,
+              formatter: `整体加权平均: {c}%`,
               position: 'end',
               fontSize: 12,
               fontWeight: 600,
@@ -308,7 +324,7 @@ function FinancePage() {
               padding: [4, 8],
               borderRadius: 4
             },
-            data: [{ yAxis: parseFloat(avgMargin), name: '平均毛利率' }]
+            data: [{ yAxis: benchmarkMargin, name: '整体加权平均毛利率' }]
           },
           data: margins
         }
@@ -349,7 +365,7 @@ function FinancePage() {
               <div className={`value ${totalProfit >= 0 ? 'positive' : 'negative'}`}>¥{totalProfit.toFixed(2)}</div>
             </div>
             <div className="stat-card">
-              <div className="label">平均毛利率</div>
+              <div className="label">整体加权平均毛利率</div>
               <div className="value">{totalMargin}%</div>
             </div>
           </div>
@@ -357,9 +373,15 @@ function FinancePage() {
           <div className="card">
             <h3 style={{ marginBottom: 4 }}>毛利率趋势分析</h3>
             <div style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
-              按出团日期排列，对比各团队毛利率，绿色高于平均线、橙色低于平均线
+              按出团日期排列，对比各团队毛利率；绿色高于整体加权平均、橙色低于整体加权平均
             </div>
-            <div ref={trendChartRef} style={{ width: '100%', height: 360 }}></div>
+            {allSummaries.length === 0 ? (
+              <div className="empty-state" style={{ height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                暂无团队数据，无法绘制趋势图
+              </div>
+            ) : (
+              <div ref={trendChartRef} style={{ width: '100%', height: 360 }}></div>
+            )}
           </div>
 
           <div className="card">
@@ -382,12 +404,18 @@ function FinancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...allSummaries].sort((a,b) => new Date(a.group.departure_date) - new Date(b.group.departure_date)).map(s => (
+                  {[...allSummaries].sort((a,b) => new Date(a.group.departure_date) - new Date(b.group.departure_date)).map(s => {
+                    const fmtDate = (iso) => {
+                      if (!iso) return '-';
+                      const d = new Date(iso);
+                      return isNaN(d.getTime()) ? iso : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    };
+                    return (
                     <tr key={s.group.id} style={{ cursor: 'pointer' }}
                       onClick={() => setSelectedGroupId(s.group.id.toString())}>
                       <td><strong>{s.group.group_code}</strong></td>
                       <td>{s.group.route_name}</td>
-                      <td>{s.group.departure_date}</td>
+                      <td>{fmtDate(s.group.departure_date)}</td>
                       <td>{s.tourists_count}/{s.group.max_group_size}</td>
                       <td style={{ color: '#16a34a' }}>¥{s.total_income}</td>
                       <td style={{ color: '#dc2626' }}>¥{s.costs.total}</td>
@@ -410,7 +438,7 @@ function FinancePage() {
                           onClick={() => navigate(`/finance/${s.group.id}`)}>详情</button>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             )}
