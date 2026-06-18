@@ -64,6 +64,14 @@ function GroupDetail() {
     } catch (err) {}
   };
 
+  const handleDeleteGroup = async () => {
+    if (!confirm(`确定要删除团队 ${group.group_code} 吗？该操作将同时删除关联的游客、计调预订等所有数据，且无法恢复。`)) return;
+    try {
+      await api.delete(`/tourists/groups/${id}`);
+      navigate('/groups');
+    } catch (err) {}
+  };
+
   const getStatusTag = (status) => {
     const map = {
       open: { text: '收客中', class: 'tag-green' },
@@ -94,6 +102,7 @@ function GroupDetail() {
           <button className="btn btn-default" onClick={() => navigate(`/operations/${id}`)}>计调操作</button>
           <button className="btn btn-default" onClick={() => navigate(`/finance/${id}`)}>成本分析</button>
           <button className="btn btn-primary" onClick={() => navigate(`/notices/${id}`)}>出团通知书</button>
+          <button className="btn btn-danger" onClick={handleDeleteGroup}>删除团队</button>
         </div>
       </div>
 

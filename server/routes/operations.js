@@ -77,8 +77,16 @@ router.post('/groups/:groupId/hotels', async (req, res, next) => {
   try {
     const { groupId } = req.params;
     const { hotel_name, room_type, room_count, checkin_date, checkout_date, room_price, notes } = req.body;
-    const nights = Math.ceil((new Date(checkout_date) - new Date(checkin_date)) / (1000 * 60 * 60 * 24));
-    const total_cost = room_count * room_price * Math.max(nights, 1);
+    const checkin = new Date(checkin_date);
+    const checkout = new Date(checkout_date);
+    if (isNaN(checkin.getTime()) || isNaN(checkout.getTime())) {
+      return res.status(400).json({ error: '请填写有效的入住和离店日期' });
+    }
+    if (checkout <= checkin) {
+      return res.status(400).json({ error: '离店日期必须晚于入住日期' });
+    }
+    const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+    const total_cost = room_count * room_price * nights;
     const result = await pool.query(
       `INSERT INTO hotel_bookings (group_id, hotel_name, room_type, room_count, checkin_date, checkout_date, room_price, total_cost, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
@@ -94,8 +102,16 @@ router.put('/hotels/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { hotel_name, room_type, room_count, checkin_date, checkout_date, room_price, notes } = req.body;
-    const nights = Math.ceil((new Date(checkout_date) - new Date(checkin_date)) / (1000 * 60 * 60 * 24));
-    const total_cost = room_count * room_price * Math.max(nights, 1);
+    const checkin = new Date(checkin_date);
+    const checkout = new Date(checkout_date);
+    if (isNaN(checkin.getTime()) || isNaN(checkout.getTime())) {
+      return res.status(400).json({ error: '请填写有效的入住和离店日期' });
+    }
+    if (checkout <= checkin) {
+      return res.status(400).json({ error: '离店日期必须晚于入住日期' });
+    }
+    const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+    const total_cost = room_count * room_price * nights;
     const result = await pool.query(
       `UPDATE hotel_bookings SET hotel_name=$1, room_type=$2, room_count=$3, checkin_date=$4,
        checkout_date=$5, room_price=$6, total_cost=$7, notes=$8 WHERE id=$9 RETURNING *`,

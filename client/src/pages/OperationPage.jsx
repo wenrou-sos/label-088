@@ -71,6 +71,18 @@ function OperationPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      if (activeTab === 'hotels') {
+        const checkin = new Date(formData.checkin_date);
+        const checkout = new Date(formData.checkout_date);
+        if (!formData.checkin_date || !formData.checkout_date || isNaN(checkin.getTime()) || isNaN(checkout.getTime())) {
+          alert('请填写有效的入住和离店日期');
+          return;
+        }
+        if (checkout <= checkin) {
+          alert('离店日期必须晚于入住日期');
+          return;
+        }
+      }
       if (activeTab === 'flights') {
         if (editingItem) {
           await api.put(`/operations/flights/${editingItem.id}`, formData);
@@ -152,9 +164,12 @@ function OperationPage() {
   );
 
   const renderHotelForm = () => {
-    const nights = formData.checkin_date && formData.checkout_date
-      ? Math.max(1, Math.ceil((new Date(formData.checkout_date) - new Date(formData.checkin_date)) / (1000 * 60 * 60 * 24)))
+    const checkin = formData.checkin_date ? new Date(formData.checkin_date) : null;
+    const checkout = formData.checkout_date ? new Date(formData.checkout_date) : null;
+    const nights = checkin && checkout && checkout > checkin
+      ? Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24))
       : 0;
+    const dateError = checkin && checkout && checkout <= checkin ? '（离店日期需晚于入住日期）' : '';
     return (
       <>
         <div className="form-row">
@@ -199,7 +214,7 @@ function OperationPage() {
           </div>
         </div>
         <div className="form-group">
-          <label>预计总成本（{nights}晚）</label>
+          <label>预计总成本（{nights}晚）{dateError && <span style={{ color: '#dc2626' }}>{dateError}</span>}</label>
           <input type="text" disabled value={`¥${(formData.room_count * formData.room_price * nights).toFixed(2)}`} />
         </div>
         <div className="form-group">

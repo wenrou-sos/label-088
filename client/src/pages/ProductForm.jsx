@@ -59,7 +59,18 @@ function ProductForm() {
   const handleDaysChange = (e) => {
     const newDays = parseInt(e.target.value) || 1;
     setForm({ ...form, days: newDays });
-    initItineraries(newDays);
+    setItineraries(prev => {
+      if (newDays > prev.length) {
+        const appended = [...prev];
+        for (let i = prev.length + 1; i <= newDays; i++) {
+          appended.push({ day_number: i, title: `第${i}天`, attractions: '', meals: '', accommodation: '', notes: '' });
+        }
+        return appended;
+      } else if (newDays < prev.length) {
+        return prev.slice(0, newDays);
+      }
+      return prev;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -68,12 +79,26 @@ function ProductForm() {
       alert('请填写线路名称、出发城市和目的地');
       return;
     }
+
+    const mergedPrices = [];
+    const seen = new Map();
+    for (let i = prices.length - 1; i >= 0; i--) {
+      const pr = prices[i];
+      if (!seen.has(pr.room_type)) {
+        seen.set(pr.room_type, true);
+        mergedPrices.unshift(pr);
+      }
+    }
+    if (mergedPrices.length !== prices.length) {
+      alert('检测到重复房型，已自动保留最后填写的价格条目');
+    }
+
     try {
       if (isEdit) {
-        await api.put(`/products/${id}`, { ...form, itineraries, prices });
+        await api.put(`/products/${id}`, { ...form, itineraries, prices: mergedPrices });
         alert('产品更新成功');
       } else {
-        await api.post('/products', { ...form, itineraries, prices });
+        await api.post('/products', { ...form, itineraries, prices: mergedPrices });
         alert('产品创建成功');
       }
       navigate('/products');

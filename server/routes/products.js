@@ -57,6 +57,15 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { route_name, days, departure_city, destination, max_group_size, description, itineraries, prices } = req.body;
+
+    if (prices && prices.length > 0) {
+      const roomTypes = prices.map(p => p.room_type);
+      const uniqueTypes = new Set(roomTypes);
+      if (uniqueTypes.size !== roomTypes.length) {
+        return res.status(400).json({ error: '价格设置中存在重复房型，请检查后重试' });
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -103,6 +112,15 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { route_name, days, departure_city, destination, max_group_size, description, itineraries, prices } = req.body;
+
+    if (prices && prices.length > 0) {
+      const roomTypes = prices.map(p => p.room_type);
+      const uniqueTypes = new Set(roomTypes);
+      if (uniqueTypes.size !== roomTypes.length) {
+        return res.status(400).json({ error: '价格设置中存在重复房型，请检查后重试' });
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');

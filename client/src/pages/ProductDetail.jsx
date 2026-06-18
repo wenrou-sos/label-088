@@ -49,6 +49,14 @@ function ProductDetail() {
     } catch (err) {}
   };
 
+  const handleDeleteGroup = async (groupId, groupCode) => {
+    if (!confirm(`确定要删除团队 ${groupCode} 吗？该操作将同时删除关联的游客、计调预订等所有数据，且无法恢复。`)) return;
+    try {
+      await api.delete(`/tourists/groups/${groupId}`);
+      loadGroups();
+    } catch (err) {}
+  };
+
   const getStatusTag = (status) => {
     const map = {
       open: { text: '收客中', class: 'tag-green' },
@@ -166,8 +174,13 @@ function ProductDetail() {
                   <td>{g.current_count} / {g.max_group_size}人</td>
                   <td>{getStatusTag(g.status)}</td>
                   <td>
-                    <button className="btn btn-sm btn-default" onClick={() => navigate(`/groups/${g.id}`)}>
+                    <button className="btn btn-sm btn-default" style={{ marginRight: 8 }}
+                      onClick={() => navigate(`/groups/${g.id}`)}>
                       详情
+                    </button>
+                    <button className="btn btn-sm btn-danger"
+                      onClick={() => handleDeleteGroup(g.id, g.group_code)}>
+                      删除
                     </button>
                   </td>
                 </tr>
