@@ -7,6 +7,7 @@ function GroupDetail() {
   const navigate = useNavigate();
   const [group, setGroup] = useState(null);
   const [tourists, setTourists] = useState([]);
+  const [hotelBookings, setHotelBookings] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTourist, setNewTourist] = useState({
     name: '',
@@ -16,6 +17,7 @@ function GroupDetail() {
     special_requirements: ''
   });
   const [newStatus, setNewStatus] = useState('');
+  const [accommodationExpanded, setAccommodationExpanded] = useState(true);
 
   useEffect(() => {
     loadGroup();
@@ -28,6 +30,145 @@ function GroupDetail() {
       setTourists(data.tourists || []);
       setNewStatus(data.status);
     } catch (err) {}
+    try {
+      const hotels = await api.get(`/operations/groups/${id}/hotels`);
+      setHotelBookings(hotels || []);
+    } catch (err) {}
+  };
+
+  const getGenderFromIdCard = (idCard) => {
+    if (!idCard || idCard.length < 17) return 'unknown';
+    const seventeenth = parseInt(idCard.charAt(16), 10);
+    return isNaN(seventeenth) ? 'unknown' : (seventeenth % 2 === 1 ? 'male' : 'female');
+  };
+
+  const generateAccommodation = () => {
+    const doubleRoomTourists = tourists.filter(t => t.room_type === '双人房');
+    const tripleRoomTourists = tourists.filter(t => t.room_type === '三人房');
+    const childNoBedTourists = tourists.filter(t => t.room_type === '儿童不占床');
+
+    const males = doubleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'male');
+    const females = doubleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'female');
+    const unknownGender = doubleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'unknown');
+
+    const rooms = [];
+    let roomNumber = 1;
+
+    for (let i = 0; i < males.length; i += 2) {
+      const isSingle = i + 1 >= males.length;
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '双人房',
+        gender: 'male',
+        occupants: isSingle ? [males[i]] : [males[i], males[i + 1]],
+        isNaturalSingle: isSingle
+      });
+    }
+
+    for (let i = 0; i < females.length; i += 2) {
+      const isSingle = i + 1 >= females.length;
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '双人房',
+        gender: 'female',
+        occupants: isSingle ? [females[i]] : [females[i], females[i + 1]],
+        isNaturalSingle: isSingle
+      });
+    }
+
+    const tripleMales = tripleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'male');
+    const tripleFemales = tripleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'female');
+    const tripleUnknown = tripleRoomTourists.filter(t => getGenderFromIdCard(t.id_card) === 'unknown');
+
+    for (let i = 0; i < tripleMales.length; i += 3) {
+      const remaining = tripleMales.length - i;
+      const occupants = tripleMales.slice(i, i + 3);
+      const isNaturalSingle = remaining === 1;
+      const isDouble = remaining === 2;
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '三人房',
+        gender: 'male',
+        occupants,
+        isNaturalSingle,
+        isUnderfilled: isDouble
+      });
+    }
+
+    for (let i = 0; i < tripleFemales.length; i += 3) {
+      const remaining = tripleFemales.length - i;
+      const occupants = tripleFemales.slice(i, i + 3);
+      const isNaturalSingle = remaining === 1;
+      const isDouble = remaining === 2;
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '三人房',
+        gender: 'female',
+        occupants,
+        isNaturalSingle,
+        isUnderfilled: isDouble
+      });
+    }
+
+    for (const t of unknownGender) {
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '双人房',
+        gender: 'unknown',
+        occupants: [t],
+        isNaturalSingle: true
+      });
+    }
+
+    for (const t of tripleUnknown) {
+      rooms.push({
+        roomNo: roomNumber++,
+        type: '三人房',
+        gender: 'unknown',
+        occupants: [t],
+        isNaturalSingle: true
+      });
+    }
+
+    const totalNights = hotelBookings.reduce((sum, h) => {
+      const checkin = new Date(h.checkin_date);
+      const checkout = new Date(h.checkout_date);
+      return sum + Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+    }, 0);
+
+    const avgDoubleRoomPrice = hotelBookings.length > 0
+      ? hotelBookings
+          .filter(h => h.room_type === '双人房')
+          .reduce((sum, h, _, arr) => {
+            const checkin = new Date(h.checkin_date);
+            const checkout = new Date(h.checkout_date);
+            const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+            return sum + h.room_price * nights;
+          }, 0) / Math.max(1, hotelBookings.filter(h => h.room_type === '双人房').length)
+      : 0;
+
+    const naturalSingles = rooms.filter(r => r.isNaturalSingle);
+    const totalSingleSupplement = naturalSingles.reduce((sum, r) => {
+      return sum + avgDoubleRoomPrice;
+    }, 0);
+
+    return {
+      rooms,
+      stats: {
+        totalTourists: tourists.length,
+        doubleRoomCount: rooms.filter(r => r.type === '双人房').length,
+        tripleRoomCount: rooms.filter(r => r.type === '三人房').length,
+        naturalSingleCount: naturalSingles.length,
+        singleSupplement: totalSingleSupplement,
+        avgDoubleRoomPrice,
+        totalNights,
+        childNoBedCount: childNoBedTourists.length,
+        maleCount: males.length,
+        femaleCount: females.length,
+        unknownGenderCount: unknownGender.length
+      },
+      childNoBedTourists
+    };
   };
 
   const handleAddTourist = async (e) => {
@@ -234,6 +375,143 @@ function GroupDetail() {
           </div>
         </div>
       )}
+
+      {tourists.length > 0 && (() => {
+        const accom = generateAccommodation();
+        const { rooms, stats, childNoBedTourists } = accom;
+        const genderLabel = { male: '男', female: '女', unknown: '未知' };
+        return (
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: accommodationExpanded ? 16 : 0, cursor: 'pointer' }}
+              onClick={() => setAccommodationExpanded(!accommodationExpanded)}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                住宿分配
+                {stats.naturalSingleCount > 0 && (
+                  <span className="tag tag-red">自然单间×{stats.naturalSingleCount}</span>
+                )}
+              </h3>
+              <span style={{ color: '#64748b', fontSize: 13 }}>
+                {accommodationExpanded ? '收起 ▲' : '展开 ▼'}
+              </span>
+            </div>
+
+            {accommodationExpanded && (
+              <>
+                <div className="accom-stats">
+                  <div className="accom-stat-item">
+                    <div className="accom-stat-label">双人房游客</div>
+                    <div className="accom-stat-value">{stats.maleCount + stats.femaleCount + stats.unknownGenderCount}人</div>
+                    <div className="accom-stat-detail">男{stats.maleCount} / 女{stats.femaleCount}{stats.unknownGenderCount > 0 ? ` / 未知${stats.unknownGenderCount}` : ''}</div>
+                  </div>
+                  <div className="accom-stat-item">
+                    <div className="accom-stat-label">所需房间</div>
+                    <div className="accom-stat-value">{stats.doubleRoomCount + stats.tripleRoomCount}间</div>
+                    <div className="accom-stat-detail">双人间{stats.doubleRoomCount} / 三人间{stats.tripleRoomCount}</div>
+                  </div>
+                  <div className="accom-stat-item accom-stat-highlight">
+                    <div className="accom-stat-label">自然单间</div>
+                    <div className="accom-stat-value" style={{ color: '#dc2626' }}>{stats.naturalSingleCount}间</div>
+                    <div className="accom-stat-detail">无法配对的落单游客</div>
+                  </div>
+                  <div className="accom-stat-item accom-stat-highlight">
+                    <div className="accom-stat-label">单房差补费合计</div>
+                    <div className="accom-stat-value" style={{ color: '#dc2626' }}>
+                      ¥{stats.singleSupplement > 0 ? stats.singleSupplement.toFixed(2) : '0.00'}
+                    </div>
+                    <div className="accom-stat-detail">
+                      {stats.avgDoubleRoomPrice > 0
+                        ? `均价 ¥${stats.avgDoubleRoomPrice.toFixed(0)}/间×${stats.naturalSingleCount}间`
+                        : '暂无酒店报价数据'}
+                    </div>
+                  </div>
+                </div>
+
+                {stats.naturalSingleCount > 0 && (
+                  <div className="accom-single-supplement-notice">
+                    <strong>单房差说明：</strong>
+                    以下标记为"自然单间"的游客因同性双人房人数为奇数，无法完成配对，需单独占用一间房。
+                    单房差补费 = 双人房均价 × 自然单间数
+                    {stats.avgDoubleRoomPrice > 0 && (
+                      <span> = ¥{stats.avgDoubleRoomPrice.toFixed(2)} × {stats.naturalSingleCount} = <strong style={{ color: '#dc2626' }}>¥{stats.singleSupplement.toFixed(2)}</strong></span>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <span className="accom-legend accom-legend-male">♂ 男宾房</span>
+                  <span className="accom-legend accom-legend-female">♀ 女宾房</span>
+                  <span className="accom-legend accom-legend-single">⚠ 自然单间</span>
+                  {stats.childNoBedCount > 0 && <span className="accom-legend accom-legend-child">👶 儿童不占床</span>}
+                </div>
+
+                <table className="accom-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 60 }}>房号</th>
+                      <th style={{ width: 80 }}>房型</th>
+                      <th style={{ width: 70 }}>性别</th>
+                      <th>入住游客</th>
+                      <th style={{ width: 100 }}>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rooms.map(room => (
+                      <tr key={room.roomNo} className={room.isNaturalSingle ? 'accom-row-single' : ''}>
+                        <td><strong>{room.roomNo}</strong></td>
+                        <td>{room.type}</td>
+                        <td>
+                          <span className={`accom-gender-tag accom-gender-${room.gender}`}>
+                            {genderLabel[room.gender]}
+                          </span>
+                        </td>
+                        <td>
+                          {room.occupants.map((t, idx) => (
+                            <span key={t.id}>
+                              {idx > 0 && <span style={{ color: '#94a3b8', margin: '0 4px' }}>+</span>}
+                              <span className="accom-tourist-name">{t.name}</span>
+                              {t.special_requirements && (
+                                <span className="accom-req-tag">{t.special_requirements}</span>
+                              )}
+                            </span>
+                          ))}
+                        </td>
+                        <td>
+                          {room.isNaturalSingle && (
+                            <span className="tag tag-red">自然单间</span>
+                          )}
+                          {room.isUnderfilled && (
+                            <span className="tag tag-yellow">两人三人间</span>
+                          )}
+                          {!room.isNaturalSingle && !room.isUnderfilled && (
+                            <span className="tag tag-green">满员</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {childNoBedTourists.length > 0 && (
+                  <div className="accom-child-section">
+                    <h4>儿童不占床 ({childNoBedTourists.length}人)</h4>
+                    <div className="accom-child-list">
+                      {childNoBedTourists.map(t => (
+                        <span key={t.id} className="accom-child-tag">
+                          👶 {t.name}
+                          {t.special_requirements && <span className="accom-req-tag">{t.special_requirements}</span>}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                      儿童不占床需与家长同住，不单独分配房间
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
