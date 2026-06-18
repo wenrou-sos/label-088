@@ -429,6 +429,11 @@ table tr:hover {
   color: #991b1b;
 }
 
+.accom-legend-triple {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
 .accom-legend-child {
   background-color: #f0fdf4;
   color: #166534;
@@ -459,6 +464,14 @@ table tr:hover {
 
 .accom-row-single:hover {
   background-color: #fee2e2 !important;
+}
+
+.accom-row-underfilled {
+  background-color: #fffbeb !important;
+}
+
+.accom-row-underfilled:hover {
+  background-color: #fef3c7 !important;
 }
 
 .accom-gender-tag {

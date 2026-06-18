@@ -83,30 +83,26 @@ function GroupDetail() {
     for (let i = 0; i < tripleMales.length; i += 3) {
       const remaining = tripleMales.length - i;
       const occupants = tripleMales.slice(i, i + 3);
-      const isNaturalSingle = remaining === 1;
-      const isDouble = remaining === 2;
       rooms.push({
         roomNo: roomNumber++,
         type: '三人房',
         gender: 'male',
         occupants,
-        isNaturalSingle,
-        isUnderfilled: isDouble
+        isNaturalSingle: false,
+        isUnderfilled: remaining < 3
       });
     }
 
     for (let i = 0; i < tripleFemales.length; i += 3) {
       const remaining = tripleFemales.length - i;
       const occupants = tripleFemales.slice(i, i + 3);
-      const isNaturalSingle = remaining === 1;
-      const isDouble = remaining === 2;
       rooms.push({
         roomNo: roomNumber++,
         type: '三人房',
         gender: 'female',
         occupants,
-        isNaturalSingle,
-        isUnderfilled: isDouble
+        isNaturalSingle: false,
+        isUnderfilled: remaining < 3
       });
     }
 
@@ -126,31 +122,39 @@ function GroupDetail() {
         type: '三人房',
         gender: 'unknown',
         occupants: [t],
-        isNaturalSingle: true
+        isNaturalSingle: false,
+        isUnderfilled: true
       });
     }
 
-    const totalNights = hotelBookings.reduce((sum, h) => {
+    const doubleRoomHotels = hotelBookings.filter(h => h.room_type === '双人房');
+    const doubleRoomTotalPerRoom = doubleRoomHotels.reduce((sum, h) => {
+      const checkin = new Date(h.checkin_date);
+      const checkout = new Date(h.checkout_date);
+      const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+      return sum + h.room_price * nights;
+    }, 0);
+
+    const totalNights = doubleRoomHotels.reduce((sum, h) => {
       const checkin = new Date(h.checkin_date);
       const checkout = new Date(h.checkout_date);
       return sum + Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
     }, 0);
 
-    const avgDoubleRoomPrice = hotelBookings.length > 0
-      ? hotelBookings
-          .filter(h => h.room_type === '双人房')
-          .reduce((sum, h, _, arr) => {
-            const checkin = new Date(h.checkin_date);
-            const checkout = new Date(h.checkout_date);
-            const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
-            return sum + h.room_price * nights;
-          }, 0) / Math.max(1, hotelBookings.filter(h => h.room_type === '双人房').length)
-      : 0;
+    const naturalSingles = rooms.filter(r => r.type === '双人房' && r.isNaturalSingle);
+    const totalSingleSupplement = doubleRoomTotalPerRoom * naturalSingles.length;
 
-    const naturalSingles = rooms.filter(r => r.isNaturalSingle);
-    const totalSingleSupplement = naturalSingles.reduce((sum, r) => {
-      return sum + avgDoubleRoomPrice;
-    }, 0);
+    const hotelBreakdown = doubleRoomHotels.map(h => {
+      const checkin = new Date(h.checkin_date);
+      const checkout = new Date(h.checkout_date);
+      const nights = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+      return {
+        hotel_name: h.hotel_name,
+        room_price: h.room_price,
+        nights,
+        subtotal: h.room_price * nights
+      };
+    });
 
     return {
       rooms,
@@ -160,8 +164,9 @@ function GroupDetail() {
         tripleRoomCount: rooms.filter(r => r.type === '三人房').length,
         naturalSingleCount: naturalSingles.length,
         singleSupplement: totalSingleSupplement,
-        avgDoubleRoomPrice,
+        doubleRoomTotalPerRoom,
         totalNights,
+        hotelBreakdown,
         childNoBedCount: childNoBedTourists.length,
         maleCount: males.length,
         femaleCount: females.length,
@@ -411,7 +416,7 @@ function GroupDetail() {
                   <div className="accom-stat-item accom-stat-highlight">
                     <div className="accom-stat-label">自然单间</div>
                     <div className="accom-stat-value" style={{ color: '#dc2626' }}>{stats.naturalSingleCount}间</div>
-                    <div className="accom-stat-detail">无法配对的落单游客</div>
+                    <div className="accom-stat-detail">仅统计双人房落单</div>
                   </div>
                   <div className="accom-stat-item accom-stat-highlight">
                     <div className="accom-stat-label">单房差补费合计</div>
@@ -419,8 +424,8 @@ function GroupDetail() {
                       ¥{stats.singleSupplement > 0 ? stats.singleSupplement.toFixed(2) : '0.00'}
                     </div>
                     <div className="accom-stat-detail">
-                      {stats.avgDoubleRoomPrice > 0
-                        ? `均价 ¥${stats.avgDoubleRoomPrice.toFixed(0)}/间×${stats.naturalSingleCount}间`
+                      {stats.doubleRoomTotalPerRoom > 0
+                        ? `全程双人房 ¥${stats.doubleRoomTotalPerRoom.toFixed(0)}/间 × ${stats.naturalSingleCount}间`
                         : '暂无酒店报价数据'}
                     </div>
                   </div>
@@ -430,9 +435,24 @@ function GroupDetail() {
                   <div className="accom-single-supplement-notice">
                     <strong>单房差说明：</strong>
                     以下标记为"自然单间"的游客因同性双人房人数为奇数，无法完成配对，需单独占用一间房。
-                    单房差补费 = 双人房均价 × 自然单间数
-                    {stats.avgDoubleRoomPrice > 0 && (
-                      <span> = ¥{stats.avgDoubleRoomPrice.toFixed(2)} × {stats.naturalSingleCount} = <strong style={{ color: '#dc2626' }}>¥{stats.singleSupplement.toFixed(2)}</strong></span>
+                    <br />
+                    <strong>计算公式：</strong>单房差补费 = 全程每间双人房总价 × 自然单间数
+                    {stats.doubleRoomTotalPerRoom > 0 && (
+                      <>
+                        <br />
+                        <strong>全程房价明细（{stats.totalNights}晚）：</strong>
+                        {stats.hotelBreakdown.map((h, idx) => (
+                          <span key={idx}>
+                            {idx > 0 && ' + '}
+                            {h.hotel_name} ¥{h.room_price.toFixed(0)}×{h.nights}晚=¥{h.subtotal.toFixed(0)}
+                          </span>
+                        ))}
+                        <span> = ¥{stats.doubleRoomTotalPerRoom.toFixed(2)}/间</span>
+                        <br />
+                        <strong>单房差合计：</strong>
+                        <span>¥{stats.doubleRoomTotalPerRoom.toFixed(2)} × {stats.naturalSingleCount} = </span>
+                        <strong style={{ color: '#dc2626' }}>¥{stats.singleSupplement.toFixed(2)}</strong>
+                      </>
                     )}
                   </div>
                 )}
@@ -441,6 +461,7 @@ function GroupDetail() {
                   <span className="accom-legend accom-legend-male">♂ 男宾房</span>
                   <span className="accom-legend accom-legend-female">♀ 女宾房</span>
                   <span className="accom-legend accom-legend-single">⚠ 自然单间</span>
+                  <span className="accom-legend accom-legend-triple">三人房不足</span>
                   {stats.childNoBedCount > 0 && <span className="accom-legend accom-legend-child">👶 儿童不占床</span>}
                 </div>
 
@@ -451,12 +472,12 @@ function GroupDetail() {
                       <th style={{ width: 80 }}>房型</th>
                       <th style={{ width: 70 }}>性别</th>
                       <th>入住游客</th>
-                      <th style={{ width: 100 }}>状态</th>
+                      <th style={{ width: 110 }}>状态</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rooms.map(room => (
-                      <tr key={room.roomNo} className={room.isNaturalSingle ? 'accom-row-single' : ''}>
+                      <tr key={room.roomNo} className={room.isNaturalSingle ? 'accom-row-single' : (room.isUnderfilled ? 'accom-row-underfilled' : '')}>
                         <td><strong>{room.roomNo}</strong></td>
                         <td>{room.type}</td>
                         <td>
@@ -479,8 +500,10 @@ function GroupDetail() {
                           {room.isNaturalSingle && (
                             <span className="tag tag-red">自然单间</span>
                           )}
-                          {room.isUnderfilled && (
-                            <span className="tag tag-yellow">两人三人间</span>
+                          {!room.isNaturalSingle && room.isUnderfilled && (
+                            <span className="tag tag-yellow">
+                              {room.type === '三人房' ? `${room.occupants.length}人三人间` : '未满'}
+                            </span>
                           )}
                           {!room.isNaturalSingle && !room.isUnderfilled && (
                             <span className="tag tag-green">满员</span>
